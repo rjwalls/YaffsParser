@@ -14,6 +14,3 @@ class YaffsBlock:
         
         self.isErased = False
         
-
-    
-    

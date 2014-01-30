@@ -1,4 +1,5 @@
 import math
+import YaffsChunk
 
 class YaffsObject:
 
@@ -13,8 +14,7 @@ class YaffsObject:
         self.chunkDict = {}
         self.isDeleted = False
         self.hasNoHeader = False
-    
-        return
+
     
     #This is old logic, but a quick simple first step to get an idea
     #of how many old chunks are on Nand
@@ -50,7 +50,7 @@ class YaffsObject:
             #if the the tag is a deleted header, then we know this is the start of a new object. Also do this even if the object does not properly start with a header
             isNewObject = (tag.isHeaderTag and tag.isDeleted)
             
-            if isNewObject or isFirstIteration :
+            if isNewObject or isFirstIteration:
                 obj = YaffsObject(self.objectId)
                 splitObjects.append(obj)
                 isFirstIteration = False
@@ -89,10 +89,7 @@ class YaffsObject:
         
             for version in self.versions :
                 print len(version), version[0][1].name
-                
 
-            
-        
     def reconstruct(self) :
         #This method should be called after all chunks for the object have been located. 
         #It will order all previous chunks by chunk id
@@ -102,9 +99,11 @@ class YaffsObject:
         
         for tag, chunk in self.chunkPairs :
         
-            if tag.isHeaderTag :
-                                
-                chunk.ParseHeaderChunk()
+            if tag.isHeaderTag:
+
+                #TODO: I refactored this to use a separate class, i.e., I might
+                #have broken the code.
+                chunk = YaffsChunk.YaffsHeader(chunk)
             
                 if not(0 in self.chunkDict):
                     self.chunkDict[0] = [(tag, chunk)]
@@ -126,8 +125,7 @@ class YaffsObject:
             
         
         return
-            
-            
+
     def writeVersion(self, versionNum) :
         header, hChunk = self.versions[versionNum][0]
         
@@ -140,7 +138,7 @@ class YaffsObject:
             for index in range(int(numChunks)):
                 cTag, cChunk = self.versions[versionNum][index+1]
                     
-                bytes = cChunk.GetBytes();
+                bytes = cChunk.get_bytes();
                     
                 if remaining >= len(bytes) :
                     f.write(bytes)
@@ -164,7 +162,7 @@ class YaffsObject:
             for index in range(int(numChunks)):
                 cTag, cChunk = chunkDict[index+1][0]
                     
-                bytes = cChunk.GetBytes();
+                bytes = cChunk.get_bytes();
                     
                 if remaining >= len(bytes) :
                     f.write(bytes)
@@ -172,8 +170,3 @@ class YaffsObject:
                 else :
                     f.write(bytes[0:remaining])
                     remaining = 0
-                        
-        
-            
-        
-        
