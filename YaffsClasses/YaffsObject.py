@@ -126,14 +126,18 @@ class YaffsObject:
         
         return
 
-    def writeVersion(self, versionNum) :
+    def writeVersion(self, versionNum=0, name=None):
         header, hChunk = self.versions[versionNum][0]
+        hChunk = YaffsChunk.YaffsHeader(hChunk)
         
         numChunks = math.ceil( float(hChunk.fsize) / hChunk.length)
         
         remaining = hChunk.fsize;
-    
-        with open(hChunk.name, "wb") as f:
+
+        if name is None:
+            name = hChunk.name
+
+        with open(name, "wb") as f:
                     
             for index in range(int(numChunks)):
                 cTag, cChunk = self.versions[versionNum][index+1]

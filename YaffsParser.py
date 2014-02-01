@@ -20,12 +20,12 @@ DEFAULT_OOB_TAG_OFFSET = 29
 
 def main():
 
-    print "="*40;
-    print SCRIPT_NAME;
-    print "v%s"%VERSION;
-    print "By Robert Walls";
-    print "Copyright 2014";
-    print "="*40;
+    print "=" * 40
+    print SCRIPT_NAME
+    print "v%s" % VERSION
+    print "By Robert Walls"
+    print "Copyright 2014"
+    print "=" * 40
 
     parser = argparse.ArgumentParser(description="Scans the YAFFS2 image and attempts to rebuild the filesystem.");
 
@@ -44,16 +44,9 @@ def main():
     print "Script started: ", datetime.datetime.now()
 
     #read in and order all of the blocks
-    sorted_blocks = extract_ordered_blocks(args.imagefile, args.pagesize, args.oobsize, args.blocksize)
+    sorted_blocks = extract_ordered_blocks(args.imagefile, args.pagesize, args.oobsize, args.blocksize, DEFAULT_OOB_TAG_OFFSET)
 
-    names = set()
-
-    for block in sorted_blocks:
-        for oob, chunk in block.chunkPairs:
-            if oob.isHeaderTag:
-                names.add(YaffsChunk.YaffsHeader(chunk).name)
-
-    #objects = extract_objects(sorted_blocks)
+    objects = extract_objects(sorted_blocks)
 
     #estimateOldChunks(objects)
 
@@ -67,7 +60,7 @@ def main():
 
     #printAllObjectNames(objects)
 
-    #testExtractSpecificFile(objects)
+    testExtractSpecificFile(objects)
 
     return
 
@@ -75,13 +68,14 @@ def main():
 def testExtractSpecificFile(objects):
 
     for object in objects:
-        if not object.hasNoHeader:
-            try:
-                if object.versions[0][0][1].name == 'contacts2.db':
-                    print 'found object'
-                    object.writeVersion(0)
-            except:
-                pass
+        if object.objectId == 564:
+        #if object.versions[0][0][1].name == 'contacts2.db':
+            print 'found object'
+
+            object.splitByVersion()
+            print 'Object has %d version(s)' % len(object.versions)
+
+            object.writeVersion()
 
 
 def printAllObjectNames(objects):
@@ -107,9 +101,8 @@ def testWriteVersion(objects) :
             object.writeVersion(2)
 
 
-def testVersionSplit(objects) :
-
-    for object in objects :
+def testVersionSplit(objects):
+    for object in objects:
             object.splitByVersion()
 
 
@@ -261,11 +254,11 @@ def extract_ordered_blocks(imagefile, chunk_size, oob_size, block_size, swap=Fal
             current_block.isErased = oob.isErased
             blocks.append(current_block)
 
-            #Add tag and chunk
-            current_block.chunkPairs.append((oob, chunk))
+        #Add tag and chunk
+        current_block.chunkPairs.append((oob, chunk))
 
-            #Check if tag has the correct sequence number
-            #current_block.possibleParseError = ( oob.blockSeq != current_block.sequenceNum )
+        #Check if tag has the correct sequence number
+        #current_block.possibleParseError = ( oob.blockSeq != current_block.sequenceNum )
 
     sorted_blocks = sorted(blocks, reverse=True, key=lambda bl: bl.sequenceNum)
 

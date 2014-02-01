@@ -10,6 +10,7 @@ import os
 
 from optparse import OptionParser
 from YaffsClasses.YaffsChunk import YaffsHeader
+from YaffsClasses.YaffsOobTag import YaffsOobTag
 
 import YaffsParser
 
@@ -21,6 +22,7 @@ def scan_file(image):
     max_count = 0
     best_csize = None
     best_osize = None
+    best_headers = None
 
     for csize in chunk_sizes:
         for osize in oob_sizes:
@@ -44,11 +46,16 @@ def scan_file(image):
                 max_count = count
                 best_csize = csize
                 best_osize = osize
+                best_headers = headers
 
     if best_csize is None:
         print "Unable to determine sizes."
     else:
         print "Most likely chunk and oob sizes: %d, %d" % (best_csize, best_osize)
+
+    guess_oob_offset(image, best_headers, best_osize)
+
+
 
 
 def count_constant_oobs(image, chunks, oobsize):
@@ -73,6 +80,31 @@ def get_oob_bytes(imagepath, chunks, oob_size):
             oobs.append(oob)
 
     return oobs
+
+
+def guess_oob_offset(image, headers, oob_size):
+    oobs_bytes = get_oob_bytes(image, headers, oob_size)
+
+    for offset in xrange(1, oob_size-17):
+        parsed = []
+
+        for bytes in oobs_bytes:
+            parsed_oob = YaffsOobTag(bytes, offset)
+            if not parsed_oob.isHeaderTag:
+                parsed = []
+                break
+            else:
+                parsed.append(parsed_oob)
+
+        object_ids = set([o.object_id for o in parsed])
+
+        if len(object_ids) == 1:
+            print "OOB tag offset is %d" % offset
+            print "Object id: %s" % str(object_ids)
+            return
+
+    print "Unable to determine OOB tag offset."
+    return
 
 
 def get_headers(image, chunk_size, oob_size):

@@ -9,6 +9,8 @@ class YaffsOobTag:
         if oobBytes is None:
             return
 
+        self.tag_offset = tag_offset
+
         #TODO: The Layout of the oob is not controlled entirely by Yaffs so
         # the specific offsets for these fields may be different for different
         # phones.
