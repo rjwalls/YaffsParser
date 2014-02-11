@@ -9,6 +9,8 @@ class YaffsOobTag:
         if oobBytes is None:
             return
 
+        #Reference to the parent block class for this Oobtag.
+        self.block_cls = None
         self.tag_offset = tag_offset
 
         # The Layout of the oob is not controlled entirely by Yaffs so
@@ -28,6 +30,7 @@ class YaffsOobTag:
         self.isBadBlock = (self.block_status != '\xff')
         
         self.isHeaderTag = (topByte == 0x80 or topByte == 0xC0)
+        self.is_shrink_header = (topByte == 0xC0)
         
         #The top byte in objectId field is overloaded in the header tag
         # to denote the type of object. We need to mask that out

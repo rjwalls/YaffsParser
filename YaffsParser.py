@@ -1,6 +1,7 @@
 # Scans the YAFFS2 image and rebuilds the filesystem.
 
 import argparse
+
 import datetime
 import os
 
@@ -18,6 +19,30 @@ DEFAULT_OOB = 64
 DEFAULT_OOB_TAG_OFFSET = 29
 
 
+def get_argparser():
+    """
+    Assume we pass this scirpt the image file as an argument
+    """
+
+    parser = argparse.ArgumentParser(description="Scans the YAFFS2 image and attempts to rebuild the filesystem.");
+
+    parser.add_argument("imagefile", help="The path to the YAFFS2 image.", type=str)
+
+    parser.add_argument("-p", help="The NAND page size (e.g. 2048 bytes). Default: %d" % DEFAULT_PAGESIZE,
+                        type=int, default=DEFAULT_PAGESIZE, dest="pagesize")
+
+    parser.add_argument('-o', help="The NAND OOB (Out of Band) size. Default: %d" % DEFAULT_OOB,
+                        type=int, default=DEFAULT_OOB, dest="oobsize")
+
+    parser.add_argument('-b', help="The NAND Block size in chunks per block. Default: %d" % DEFAULT_PAGES_PER_BLOCK,
+                        type=int, default=DEFAULT_PAGES_PER_BLOCK, dest="blocksize")
+
+    parser.add_argument('-t', help="The tag offset within the OOB. Default: %d" % DEFAULT_OOB_TAG_OFFSET,
+                        type=int, default=DEFAULT_OOB_TAG_OFFSET, dest="tag_offset")
+
+    return parser
+
+
 def main():
 
     print "=" * 40
@@ -27,15 +52,7 @@ def main():
     print "Copyright 2014"
     print "=" * 40
 
-    parser = argparse.ArgumentParser(description="Scans the YAFFS2 image and attempts to rebuild the filesystem.");
-
-    parser.add_argument("imagefile", help="The path to the YAFFS2 image.", type=str);
-
-    parser.add_argument("-p", help="The NAND page size (e.g. 2048 bytes). Default: %d"%DEFAULT_PAGESIZE, type=int, default=DEFAULT_PAGESIZE, dest="pagesize");
-
-    parser.add_argument('-o', help="The NAND OOB (Out of Band) size. Default: %d"%DEFAULT_OOB, type=int, default=DEFAULT_OOB,dest="oobsize");
-
-    parser.add_argument('-b', help="The NAND Block size in chunks per block. Default: %d"%DEFAULT_PAGES_PER_BLOCK, type=int, default=DEFAULT_PAGES_PER_BLOCK,dest="blocksize");
+    parser = get_argparser()
 
     args = parser.parse_args()
 
@@ -49,9 +66,29 @@ def main():
     objects = extract_objects(sorted_blocks)
 
     for object in objects:
-        if object.object_id == 692:
+        if True or object.object_id == 692:
             object.splitByVersion()
-            pass
+
+            for version in object.versions:
+                header_oob, header_chunk = version[0]
+
+                if header_oob.is_shrink_header:
+                    pass
+
+                size = 0
+
+                for id in version:
+                    if id == 0:
+                        continue
+                    else:
+                        size += version[id][0].num_bytes
+
+                if size != header_oob.num_bytes:
+                    #TODO: Is this an indication that a certain version
+                    #of a file cannot be recovered due to missing chunks?
+                    #How will shrink headers impact this?
+                    print 'Size mismatch.'
+
 
     #estimateOldChunks(objects)
 
@@ -284,6 +321,7 @@ def extract_ordered_blocks(imagefile, chunk_size, oob_size, block_size, swap=Fal
 
         #Add tag and chunk
         current_block.chunk_pairs.append((oob, chunk))
+        oob.block_cls = current_block
 
         current_block.has_erased_chunks |= oob.is_erased
 

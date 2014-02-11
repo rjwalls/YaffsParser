@@ -57,6 +57,22 @@ class YaffsObject:
             obj.chunk_pairs.append((tag,chunk))
             
         return splitObjects
+
+    def sanity_check(self):
+        """
+        This method is a simple sanity check that will return false if any
+        of the file versions contain a chunk with a block sequence number
+        greater than that of the header chunk. This should not happen as the header
+        is always the last part of a file to be written.
+        """
+
+        for version in self.versions:
+            header_oob, header_chunk = version[0]
+            for chunk_id in version:
+                if header_oob.block_seq < version[chunk_id][0].block_seq:
+                    return False
+
+        return True
         
     def splitByVersion(self) :
         #This method will split the object by the version.
