@@ -39,14 +39,19 @@ def main():
 
     args = parser.parse_args()
 
-    print args.imagefile, args.pagesize, args.oobsize
+    print args.imagefile, args.pagesize, args.oobsize, DEFAULT_OOB_TAG_OFFSET
 
     print "Script started: ", datetime.datetime.now()
 
     #read in and order all of the blocks
-    sorted_blocks = extract_ordered_blocks(args.imagefile, args.pagesize, args.oobsize, args.blocksize, DEFAULT_OOB_TAG_OFFSET)
+    sorted_blocks = extract_ordered_blocks(args.imagefile, args.pagesize, args.oobsize, args.blocksize, tag_offset=DEFAULT_OOB_TAG_OFFSET)
 
     objects = extract_objects(sorted_blocks)
+
+    for object in objects:
+        if object.object_id == 692:
+            object.splitByVersion()
+            pass
 
     #estimateOldChunks(objects)
 
@@ -63,6 +68,7 @@ def main():
     testExtractSpecificFile(objects)
 
     return
+
 
 
 def testExtractSpecificFile(objects):
@@ -140,8 +146,17 @@ def estimateOldChunks(objects) :
     print 'Average num of old chunks: ', (sumOld / len(objects))
 
 
-def extract_objects(sorted_blocks):
-    #This function will scan through the image file and extract objects based on the found object header tags.
+def extract_objects(blocks):
+    """
+    This function will scan through the image file and
+    extract objects based on the found object header tags.
+    """
+
+    #The blocks should be sorted in by reverse sequence number as
+    #the sequence number provides a temporal ordering
+    sorted_blocks = sorted(blocks, reverse=True, key=lambda bl: bl.sequence_num)
+
+
     objects = {}
 
     print 'Extracting objects...'
@@ -149,18 +164,27 @@ def extract_objects(sorted_blocks):
     #scan through the list of blocks. Should be sorted in reverse sequence order.
     for block in sorted_blocks:
         #skip erased blocks
-        if block.isErased:
+        if block.is_erased:
             continue
 
         #Add the chunks in reverse order they were written to the block
-        pairsRev = block.chunkPairs
+        pairsRev = block.chunk_pairs
         pairsRev.reverse()
 
         for tag, chunk in pairsRev:
-            if not(tag.object_id in objects):
+            #Skip erased tags
+            if tag.is_erased:
+                continue
+
+            if tag.object_id not in objects:
                 objects[tag.object_id] = YaffsObject.YaffsObject(tag.object_id)
 
-            objects[tag.object_id].chunkPairs.append((tag, chunk))
+            if tag.isHeaderTag:
+                chunk = YaffsChunk.YaffsHeader(chunk)
+
+            #Pairs should be added in the reverse order of how they
+            #were written, i.e., the most recent first.
+            objects[tag.object_id].chunk_pairs.append((tag, chunk))
 
     objectsSplit = []
 
@@ -175,6 +199,9 @@ def extract_objects(sorted_blocks):
 
     for id in objects:
         objects[id].reconstruct()
+
+    for id in objects:
+        objects[id].splitByVersion()
 
     print 'Found %d objects' %len(objects)
     print 'Found %d deleted objects.' %len([object for id, object in objects.iteritems() if object.isDeleted])
@@ -245,31 +272,41 @@ def extract_ordered_blocks(imagefile, chunk_size, oob_size, block_size, swap=Fal
 
     blocks = []
 
+    current_block = None
     current_seqnum = None
 
     for oob, chunk in zip(oobs, chunks):
-        if current_seqnum is None or oob.blockSeq != current_seqnum:
-            current_block = YaffsBlock.YaffsBlock(oob.blockSeq)
-            current_seqnum = oob.blockSeq
-            current_block.isErased = oob.isErased
+        if current_block is None or len(current_block.chunk_pairs) == block_size:
+            current_block = YaffsBlock.YaffsBlock(oob.block_seq)
+            current_seqnum = oob.block_seq
+            current_block.is_erased = oob.is_erased
             blocks.append(current_block)
 
         #Add tag and chunk
-        current_block.chunkPairs.append((oob, chunk))
+        current_block.chunk_pairs.append((oob, chunk))
+
+        current_block.has_erased_chunks |= oob.is_erased
 
         #Check if tag has the correct sequence number
-        #current_block.possibleParseError = ( oob.blockSeq != current_block.sequenceNum )
+        current_block.possible_parse_error |= (not oob.is_erased and
+                                               oob.block_seq != current_block.sequence_num)
 
-    sorted_blocks = sorted(blocks, reverse=True, key=lambda bl: bl.sequenceNum)
+    sorted_blocks = sorted(blocks, reverse=True, key=lambda bl: bl.sequence_num)
 
     print 'Found %d blocks.' % len(sorted_blocks)
 
-    print 'Found %d good blocks.' % len([block for block in sorted_blocks if not (block.isErased or block.possibleParseError)])
+    print 'Found %d good blocks.' \
+          % len([block for block in sorted_blocks if not (block.is_erased or block.possible_parse_error)])
 
-    print 'Found %d erased blocks.' % len([block for block in sorted_blocks if block.isErased])
+    print 'Found %d erased blocks.' \
+          % len([block for block in sorted_blocks if block.is_erased])
+
+    print 'Found %d blocks with erased chunks.' \
+          % len([b for b in sorted_blocks if block.has_erased_chunks])
 
     #This can happen if the phone is turned off while writing.
-    print 'Found %d blocks with mismatched sequence numbers' % len([block for block in sorted_blocks if block.possibleParseError])
+    print 'Found %d blocks with mismatched sequence numbers' \
+          % len([block for block in sorted_blocks if block.possible_parse_error])
 
     return sorted_blocks
 

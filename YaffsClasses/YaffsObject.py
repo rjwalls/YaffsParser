@@ -3,11 +3,10 @@ import YaffsChunk
 
 class YaffsObject:
 
-    def __init__(self, objId):
-    
+    def __init__(self, obj_id):
         #tuple of type tag, chunk
-        self.chunkPairs = []
-        self.objectId = objId
+        self.chunk_pairs = []
+        self.object_id = obj_id
         self.versions = []
         
         #[(tag,chunk)...] tuple lists keyed by chunkId
@@ -20,13 +19,13 @@ class YaffsObject:
     #of how many old chunks are on Nand
     def SimpleOldChunkCount(self) :
         if self.isDeleted :
-            return len(self.chunkPairs)
+            return len(self.chunk_pairs)
     
         chunkIds = [];
         old = 0;
         
         #the oobTags should already be sorted given the way they are read in.
-        for tag, chunk in self.chunkPairs :            
+        for tag, chunk in self.chunk_pairs :
             if not(tag.chunkId in chunkIds) :
                 chunkIds.append(tag.chunkId)
             else :
@@ -45,17 +44,17 @@ class YaffsObject:
         obj = None
         
         #iterate through all chunkPairs
-        for tag, chunk in self.chunkPairs :
+        for tag, chunk in self.chunk_pairs :
         
             #if the the tag is a deleted header, then we know this is the start of a new object. Also do this even if the object does not properly start with a header
             isNewObject = (tag.isHeaderTag and tag.isDeleted)
             
             if isNewObject or isFirstIteration:
-                obj = YaffsObject(self.objectId)
+                obj = YaffsObject(self.object_id)
                 splitObjects.append(obj)
                 isFirstIteration = False
             
-            obj.chunkPairs.append((tag,chunk))
+            obj.chunk_pairs.append((tag,chunk))
             
         return splitObjects
         
@@ -64,59 +63,60 @@ class YaffsObject:
         #TODO: It wont handle shrink headers yet.
         #TODO: Doesn't handle issues that arise from missing chunks
         #TODO: Probably want to remove this method and rewrite the reconstruct method.
-        
-        
+
         self.versions = []
         chunks = None
         
-        for tag, chunk in self.chunkPairs :
-            if tag.isHeaderTag :
+        for tag, chunk in self.chunk_pairs:
+            if tag.isHeaderTag:
                 chunks = {}
                 chunks[0] = (tag, chunk)
+
                 
                 self.versions.append(chunks)
                 
             #if this is not a header, add it to every known version that doesn't have a chunk with this id
-            else :
-                for version in self.versions :
-                    if not(tag.chunkId in version) :
-                        version[tag.chunkId] = (tag, chunk)
+            #unless this chunk is beyond the end of the file
+            else:
+                for version in self.versions:
+                    #The oob tag contains the file size, we shouldn't include any chunks beyond that file size.
+                    filesize = version[0][0].num_bytes
+                    num_chunks = int(math.ceil(filesize * 1.0 / chunk.length))
+                    if not(tag.chunk_id in version) and tag.chunk_id <= num_chunks:
+                        version[tag.chunk_id] = (tag, chunk)
         
         
-        if False and len(self.versions) > 1 :
-            print 'Object %d has %d versions' % (self.objectId, len(self.versions))
+        if False and len(self.versions) > 1:
+            print 'Object %d has %d versions' % (self.object_id, len(self.versions))
             print 'They have the following chunk counts per version'
         
             for version in self.versions :
                 print len(version), version[0][1].name
 
-    def reconstruct(self) :
-        #This method should be called after all chunks for the object have been located. 
-        #It will order all previous chunks by chunk id
-        
-        
+    def reconstruct(self):
+        """
+        This method should be called after all chunks for the object have been located.
+        It will order all previous chunks by chunk id
+        """
+
         #print 'Reconstructing object %d from %d chunks.' % (self.objectId, len(self.chunkPairs))
         
-        for tag, chunk in self.chunkPairs :
-        
+        for tag, chunk in self.chunk_pairs:
             if tag.isHeaderTag:
-
-                #TODO: I refactored this to use a separate class, i.e., I might
-                #have broken the code.
                 chunk = YaffsChunk.YaffsHeader(chunk)
             
                 if not(0 in self.chunkDict):
                     self.chunkDict[0] = [(tag, chunk)]
-                else :
-                    self.chunkDict[0].append((tag,chunk))
-                
-            if not tag.isHeaderTag :
-                if not(tag.chunkId in self.chunkDict):
-                    self.chunkDict[tag.chunkId] = [(tag, chunk)]
                 else:
-                    self.chunkDict[tag.chunkId].append((tag,chunk))
+                    self.chunkDict[0].append((tag, chunk))
+                
+            if not tag.isHeaderTag:
+                if not(tag.chunk_id in self.chunkDict):
+                    self.chunkDict[tag.chunk_id] = [(tag, chunk)]
+                else:
+                    self.chunkDict[tag.chunk_id].append((tag, chunk))
         
-        if not 0 in self.chunkDict :
+        if not 0 in self.chunkDict:
             #print 'Object has no header tag!'
             self.hasNoHeader = True
         else :
@@ -132,7 +132,7 @@ class YaffsObject:
         
         numChunks = math.ceil( float(hChunk.fsize) / hChunk.length)
         
-        remaining = hChunk.fsize;
+        remaining = hChunk.fsize
 
         if name is None:
             name = hChunk.name
@@ -142,9 +142,9 @@ class YaffsObject:
             for index in range(int(numChunks)):
                 cTag, cChunk = self.versions[versionNum][index+1]
                     
-                bytes = cChunk.get_bytes();
+                bytes = cChunk.get_bytes()
                     
-                if remaining >= len(bytes) :
+                if remaining >= len(bytes):
                     f.write(bytes)
                     remaining -= len(bytes)
                 else :
@@ -153,9 +153,9 @@ class YaffsObject:
     
         pass
             
-    def write(self) :
+    def write(self):
     
-        tag, chunk = self.chunkDict[0][0];
+        tag, chunk = self.chunkDict[0][0]
     
         numChunks = math.ceil( float(chunk.fsize) / chunk.length )
         

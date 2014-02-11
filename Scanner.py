@@ -42,7 +42,7 @@ def scan_file(image):
 
             count = len(headers) - constant_count
 
-            if count > max_count:
+            if count >= max_count:
                 max_count = count
                 best_csize = csize
                 best_osize = osize
