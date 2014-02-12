@@ -55,11 +55,8 @@ def scan_file(image):
 
     guess_oob_offset(image, best_headers, best_osize)
 
-
-
-
 def count_constant_oobs(image, chunks, oobsize):
-    oobs = get_oob_bytes(image, chunks, oobsize)
+    oobs = YaffsParser.get_oob_bytes(image, chunks, oobsize)
     constants_count = 0
     constant = '\xff' * oobsize
 
@@ -69,21 +66,8 @@ def count_constant_oobs(image, chunks, oobsize):
 
     return constants_count
 
-
-def get_oob_bytes(imagepath, chunks, oob_size):
-    oobs = []
-
-    with open(imagepath, 'rb') as file:
-        for chunk in chunks:
-            file.seek(chunk.offset+chunk.length)
-            oob = file.read(oob_size)
-            oobs.append(oob)
-
-    return oobs
-
-
 def guess_oob_offset(image, headers, oob_size):
-    oobs_bytes = get_oob_bytes(image, headers, oob_size)
+    oobs_bytes = YaffsParser.get_oob_bytes(image, headers, oob_size)
 
     for offset in xrange(1, oob_size-17):
         parsed = []

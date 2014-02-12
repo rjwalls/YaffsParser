@@ -8,35 +8,20 @@ class YaffsObject:
         self.chunk_pairs = []
         self.object_id = obj_id
         self.versions = []
-        
-        #[(tag,chunk)...] tuple lists keyed by chunkId
-        self.chunkDict = {}
-        self.isDeleted = False
+        self.is_deleted = False
         self.hasNoHeader = False
-
-    
-    #This is old logic, but a quick simple first step to get an idea
-    #of how many old chunks are on Nand
-    def SimpleOldChunkCount(self) :
-        if self.isDeleted :
-            return len(self.chunk_pairs)
-    
-        chunkIds = [];
-        old = 0;
         
-        #the oobTags should already be sorted given the way they are read in.
-        for tag, chunk in self.chunk_pairs :
-            if not(tag.chunkId in chunkIds) :
-                chunkIds.append(tag.chunkId)
-            else :
-                old += 1
-                
-        return old
+        #[(tag_cls,chunk_cls)...] tuple lists keyed by chunkId
+        #This allows use to have an ordered list of chunks, by id, such
+        #that the most recent chunk is first in the list.
+        self.chunkDict = {}
         
-    def splitByDeletions(self) :
-        #This method will split the object based on the deletion headers.
-        #We need to do this because object ids are reassigned after the old object has been deleted.
-        
+    def splitByDeletions(self):
+        """
+        This method will split the object based on the deletion headers.
+        We need to do this because object ids are
+        reassigned after the old object has been deleted.
+        """
         splitObjects = []
         
         isFirstIteration = True
@@ -44,9 +29,11 @@ class YaffsObject:
         obj = None
         
         #iterate through all chunkPairs
-        for tag, chunk in self.chunk_pairs :
+        for tag, chunk in self.chunk_pairs:
         
-            #if the the tag is a deleted header, then we know this is the start of a new object. Also do this even if the object does not properly start with a header
+            #if the the tag is a deleted header, then we know this
+            # is the start of a new object. Also do this even if
+            # the object does not properly start with a header
             isNewObject = (tag.isHeaderTag and tag.isDeleted)
             
             if isNewObject or isFirstIteration:
@@ -54,7 +41,11 @@ class YaffsObject:
                 splitObjects.append(obj)
                 isFirstIteration = False
             
-            obj.chunk_pairs.append((tag,chunk))
+            obj.chunk_pairs.append((tag, chunk))
+
+
+        if len(splitObjects) > 1 or len(splitObjects) == 0:
+            pass
             
         return splitObjects
 
@@ -74,11 +65,10 @@ class YaffsObject:
 
         return True
         
-    def splitByVersion(self) :
+    def splitByVersion(self):
         #This method will split the object by the version.
         #TODO: It wont handle shrink headers yet.
         #TODO: Doesn't handle issues that arise from missing chunks
-        #TODO: Probably want to remove this method and rewrite the reconstruct method.
 
         self.versions = []
         chunks = None
@@ -87,8 +77,6 @@ class YaffsObject:
             if tag.isHeaderTag:
                 chunks = {}
                 chunks[0] = (tag, chunk)
-
-                
                 self.versions.append(chunks)
                 
             #if this is not a header, add it to every known version that doesn't have a chunk with this id
@@ -100,13 +88,19 @@ class YaffsObject:
                     num_chunks = int(math.ceil(filesize * 1.0 / chunk.length))
                     if not(tag.chunk_id in version) and tag.chunk_id <= num_chunks:
                         version[tag.chunk_id] = (tag, chunk)
-        
-        
+
+        if len(self.versions) > 0:
+            #All chunks in the most recent version of the object
+            #are known to be good because Yaffs won't erase a chunk
+            #if it is currently in use.
+            for id in self.versions[0]:
+                self.versions[0][id][0].is_most_recent = True
+
         if False and len(self.versions) > 1:
             print 'Object %d has %d versions' % (self.object_id, len(self.versions))
             print 'They have the following chunk counts per version'
         
-            for version in self.versions :
+            for version in self.versions:
                 print len(version), version[0][1].name
 
     def reconstruct(self):
@@ -115,8 +109,6 @@ class YaffsObject:
         It will order all previous chunks by chunk id
         """
 
-        #print 'Reconstructing object %d from %d chunks.' % (self.objectId, len(self.chunkPairs))
-        
         for tag, chunk in self.chunk_pairs:
             if tag.isHeaderTag:
                 chunk = YaffsChunk.YaffsHeader(chunk)
@@ -135,12 +127,10 @@ class YaffsObject:
         if not 0 in self.chunkDict:
             #print 'Object has no header tag!'
             self.hasNoHeader = True
-        else :
+        else:
             tag, chunk = self.chunkDict[0][0]
-            self.isDeleted = tag.isDeleted
-            
-        
-        return
+            self.is_deleted = tag.isDeleted
+
 
     def writeVersion(self, versionNum=0, name=None):
         header, hChunk = self.versions[versionNum][0]
@@ -168,25 +158,3 @@ class YaffsObject:
                     remaining = 0
     
         pass
-            
-    def write(self):
-    
-        tag, chunk = self.chunkDict[0][0]
-    
-        numChunks = math.ceil( float(chunk.fsize) / chunk.length )
-        
-        remaining = chunk.fsize;
-            
-        with open('out.png', "wb") as f:
-                    
-            for index in range(int(numChunks)):
-                cTag, cChunk = chunkDict[index+1][0]
-                    
-                bytes = cChunk.get_bytes();
-                    
-                if remaining >= len(bytes) :
-                    f.write(bytes)
-                    remaining -= len(bytes)
-                else :
-                    f.write(bytes[0:remaining])
-                    remaining = 0

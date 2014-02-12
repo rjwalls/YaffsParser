@@ -21,60 +21,58 @@ def main():
                                                        args.blocksize,
                                                        tag_offset=args.tag_offset)
 
+    missing_set = get_missing_block_numbers(sorted_blocks)
+
+
+def get_missing_block_numbers(sorted_blocks):
+    """
+    Returns a set of missing sequence numbers, if any exist.
+    Otherwise, returns None.
+    """
     #Must have at least two blocks
     if len(sorted_blocks) <= 1:
         return
 
     print "Excluding erased blocks, because they don't have valid sequence numbers"
 
-    sorted_blocks = [b for b in sorted_blocks if not b.is_erased]
+    blocks = [b for b in sorted_blocks if not b.is_erased]
 
-    seq_set = set([b.sequence_num for b in sorted_blocks])
+    seq_set = set([b.sequence_num for b in blocks])
 
     print "Found %d unique sequence numbers" % len(seq_set)
 
     #Let's check to make sure that no two blocks have the same sequence number.
-    if len(seq_set) < len(sorted_blocks):
+    if len(seq_set) < len(blocks):
         print "At least one sequence number must have been repeated."
 
     #The blocks are sorted in reverse
-    last = sorted_blocks[0].sequence_num
-    first = sorted_blocks[-1].sequence_num
+    last = blocks[0].sequence_num
+    first = blocks[-1].sequence_num
 
     if last == 4294967295:
         print "Sequence numbers might have rolled over. Weird! Stopping."
         return
 
-    if len(sorted_blocks) == (last - first + 1):
+    if len(blocks) == (last - first + 1):
         print "None of the block sequence numbers are missing."
-        return
+        return set([])
 
     missing_set = set(range(first, last + 1)) - seq_set
     print "Missing %d sequence numbers." % len(missing_set)
 
     holes = []
 
-    for x in range(1, len(sorted_blocks)):
+    for x in range(1, len(blocks)):
         #check if the blocks are not contiguous
-        if sorted_blocks[x].sequence_num != sorted_blocks[x-1].sequence_num-1:
-            hole_start = sorted_blocks[x].sequence_num + 1
-            hole_end = sorted_blocks[x-1].sequence_num - 1
+        if blocks[x].sequence_num != blocks[x-1].sequence_num-1:
+            hole_start = blocks[x].sequence_num + 1
+            hole_end = blocks[x-1].sequence_num - 1
 
             holes.append((hole_start, hole_end))
 
     print "Found %d holes." % len(holes)
 
-
-
-
-
-
-
-
-
-
-
-
+    return missing_set
 
 
 if __name__ == '__main__':

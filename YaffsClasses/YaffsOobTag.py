@@ -44,6 +44,13 @@ class YaffsOobTag:
         #non-empty block, but the object has been deleted
         self.isDeleted = (self.chunk_id == 0xc0000004)
 
+        #This field is set by the Yaffs Object upon
+        # reconstruction of the different versions.
+        #It denotes that this chunk is used by the most recent
+        #version of the Yaffs object.
+        self.is_most_recent = False
+
+
     def __str__(self):
         return 'Block Seq: %d, Object Id: %d, Chunk Id: %d, Num. Bytes: %d' \
                % (self.block_seq, self.object_id, self.chunk_id, self.num_bytes)

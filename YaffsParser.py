@@ -1,6 +1,7 @@
 # Scans the YAFFS2 image and rebuilds the filesystem.
 
 import argparse
+import summarize_deleted_blocks
 
 import datetime
 import os
@@ -56,20 +57,82 @@ def main():
 
     args = parser.parse_args()
 
-    print args.imagefile, args.pagesize, args.oobsize, DEFAULT_OOB_TAG_OFFSET
-
+    print args.imagefile, args.pagesize, args.oobsize, args.blocksize, args.tag_offset
     print "Script started: ", datetime.datetime.now()
+    print 'File size: ', os.path.getsize(args.imagefile)
 
-    #read in and order all of the blocks
-    sorted_blocks = extract_ordered_blocks(args.imagefile, args.pagesize, args.oobsize, args.blocksize, tag_offset=DEFAULT_OOB_TAG_OFFSET)
+    #read in and order all of the blocks, by reverse order of sequence number
+    sorted_blocks = extract_ordered_blocks(args.imagefile,
+                                           args.pagesize,
+                                           args.oobsize,
+                                           args.blocksize,
+                                           args.tag_offset)
+
+    print 'Found %d blocks.' % len(sorted_blocks)
+    print 'Found %d good blocks.' \
+          % len([block for block in sorted_blocks
+                 if not (block.is_erased or block.possible_parse_error)])
+
+    print 'Found %d erased blocks.' \
+          % len([block for block in sorted_blocks if block.is_erased])
+
+    #This can happen if the phone is turned off while writing.
+    print 'Found %d blocks with mismatched sequence numbers' \
+          % len([block for block in sorted_blocks if block.possible_parse_error])
+
+    missing_seq_nums = summarize_deleted_blocks.get_missing_block_numbers(sorted_blocks)
 
     objects = extract_objects(sorted_blocks)
 
+    print 'Found %d objects' % len(objects)
+    print 'Found %d deleted objects.' % len([obj for obj in objects if obj.is_deleted])
+    print 'Found %d objects with a header.' % len([obj for obj in objects if 0 in obj.chunkDict])
+
+    for obj in objects:
+        if len(obj.versions) == 0:
+            continue
+
+        oob, chunk = obj.versions[0][0]
+
+        if oob.num_bytes == 0 and chunk.name == 'deleted':
+            obj.is_deleted = True
+
+
     for object in objects:
-        if True or object.object_id == 692:
-            object.splitByVersion()
+        if object.object_id == 692:
+
+            #We need to look at the each version to see if any holes exist in
+            #the block sequence numbers that might affect the chunks,
+            # i.e., missing blocks that might have contained chunks
+            #of the particular version.
+            holey_versions = []
 
             for version in object.versions:
+                for chunk_id in version:
+                    if chunk_id == 0:
+                        version_seq_num = version[0][0].block_seq
+                        continue
+
+                    oob, chunk = version[chunk_id]
+
+                    if oob.is_most_recent:
+                        continue
+                    if oob.block_seq == version_seq_num:
+                        continue
+                    if oob.block_seq > version_seq_num:
+                        print "Wait! This chunk was written after the header. Error."
+                        break
+                    if oob.block_seq < version_seq_num:
+                        between = set(range(oob.block_seq+1, version_seq_num)) & missing_seq_nums
+                        if len(between) > 0:
+                            #print "Chunk and version header are separated by %d holes." % len(between)
+                            holey_versions.append(version)
+                            break
+
+            object.holey_versions = holey_versions
+            #print 'Found %d versions with holes.' % len(holey_versions)
+
+            for version in holey_versions:
                 header_oob, header_chunk = version[0]
 
                 if header_oob.is_shrink_header:
@@ -90,6 +153,7 @@ def main():
                     print 'Size mismatch.'
 
 
+
     #estimateOldChunks(objects)
 
     #objects_deleted = [object for object in objects if object.isDeleted]
@@ -105,7 +169,6 @@ def main():
     testExtractSpecificFile(objects)
 
     return
-
 
 
 def testExtractSpecificFile(objects):
@@ -185,14 +248,13 @@ def estimateOldChunks(objects) :
 
 def extract_objects(blocks):
     """
-    This function will scan through the image file and
+    This function will scan through the list of Yaffs blocks and
     extract objects based on the found object header tags.
     """
 
     #The blocks should be sorted in by reverse sequence number as
     #the sequence number provides a temporal ordering
     sorted_blocks = sorted(blocks, reverse=True, key=lambda bl: bl.sequence_num)
-
 
     objects = {}
 
@@ -205,10 +267,11 @@ def extract_objects(blocks):
             continue
 
         #Add the chunks in reverse order they were written to the block
-        pairsRev = block.chunk_pairs
-        pairsRev.reverse()
+        #We use the list here to create a copy of the list.
+        pairs_reversed = list(block.chunk_pairs)
+        pairs_reversed.reverse()
 
-        for tag, chunk in pairsRev:
+        for tag, chunk in pairs_reversed:
             #Skip erased tags
             if tag.is_erased:
                 continue
@@ -219,42 +282,29 @@ def extract_objects(blocks):
             if tag.isHeaderTag:
                 chunk = YaffsChunk.YaffsHeader(chunk)
 
+                if chunk.name == 'deleted':
+                    tag.isDeleted = True
+
             #Pairs should be added in the reverse order of how they
             #were written, i.e., the most recent first.
             objects[tag.object_id].chunk_pairs.append((tag, chunk))
 
-    objectsSplit = []
+    split_objects = []
 
-    for id in objects:
-        splits = objects[id].splitByDeletions()
+    for object_id in objects:
+        splits = objects[object_id].splitByDeletions()
+        split_objects.extend(splits)
 
-        for split in splits:
-            objectsSplit.append(split)
+    for obj in split_objects:
+        obj.reconstruct()
+        obj.splitByVersion()
 
-    for object in objectsSplit:
-        object.reconstruct()
-
-    for id in objects:
-        objects[id].reconstruct()
-
-    for id in objects:
-        objects[id].splitByVersion()
-
-    print 'Found %d objects' %len(objects)
-    print 'Found %d deleted objects.' %len([object for id, object in objects.iteritems() if object.isDeleted])
-
-    print 'Found {0} objects with a header.'.format(len([x for x in objects if 0 in objects[x].chunkDict]))
-
-    print 'Found %d objects after spliting.' %len(objectsSplit)
-
-    print 'Found %d deleted objects after splitting.' %len([object for object in objectsSplit if object.isDeleted])
-
-    return objectsSplit
+    return split_objects
 
 
 def extract_chunks(imagefile, chunk_size, oob_size, swap=False):
     """
-    Extract the chunks from the image, but do not attempt to order them into
+    Extract the chunks from the image, but does not attempt to order them into
     blocks.
     """
 
@@ -292,30 +342,23 @@ def extract_chunks(imagefile, chunk_size, oob_size, swap=False):
     return chunk_pairs
 
 
-def extract_ordered_blocks(imagefile, chunk_size, oob_size, block_size, swap=False, tag_offset=29):
+def extract_ordered_blocks(imagefile, chunk_size, oob_size, block_size, tag_offset):
     """
-
+    This method extracts ordered blocks from the yaffs image file.
     """
-
-    print 'File size: ', os.path.getsize(imagefile)
-
-    chunk_pairs = extract_chunks(imagefile, chunk_size, oob_size, swap)
-
-    print 'Found %d chunks.' % len(chunk_pairs)
+    chunk_pairs = extract_chunks(imagefile, chunk_size, oob_size, False)
 
     chunks = [c for c, o in chunk_pairs]
-    oob_bytes = Scanner.get_oob_bytes(imagefile, chunks, oob_size)
+    oob_bytes = get_oob_bytes(imagefile, chunks, oob_size)
     oobs = [YaffsOobTag.YaffsOobTag(oob, tag_offset) for oob in oob_bytes]
 
     blocks = []
 
     current_block = None
-    current_seqnum = None
 
     for oob, chunk in zip(oobs, chunks):
         if current_block is None or len(current_block.chunk_pairs) == block_size:
             current_block = YaffsBlock.YaffsBlock(oob.block_seq)
-            current_seqnum = oob.block_seq
             current_block.is_erased = oob.is_erased
             blocks.append(current_block)
 
@@ -323,30 +366,25 @@ def extract_ordered_blocks(imagefile, chunk_size, oob_size, block_size, swap=Fal
         current_block.chunk_pairs.append((oob, chunk))
         oob.block_cls = current_block
 
-        current_block.has_erased_chunks |= oob.is_erased
-
         #Check if tag has the correct sequence number
         current_block.possible_parse_error |= (not oob.is_erased and
                                                oob.block_seq != current_block.sequence_num)
 
     sorted_blocks = sorted(blocks, reverse=True, key=lambda bl: bl.sequence_num)
 
-    print 'Found %d blocks.' % len(sorted_blocks)
-
-    print 'Found %d good blocks.' \
-          % len([block for block in sorted_blocks if not (block.is_erased or block.possible_parse_error)])
-
-    print 'Found %d erased blocks.' \
-          % len([block for block in sorted_blocks if block.is_erased])
-
-    print 'Found %d blocks with erased chunks.' \
-          % len([b for b in sorted_blocks if block.has_erased_chunks])
-
-    #This can happen if the phone is turned off while writing.
-    print 'Found %d blocks with mismatched sequence numbers' \
-          % len([block for block in sorted_blocks if block.possible_parse_error])
-
     return sorted_blocks
+
+
+def get_oob_bytes(imagepath, chunks, oob_size):
+    oobs = []
+
+    with open(imagepath, 'rb') as file:
+        for chunk in chunks:
+            file.seek(chunk.offset+chunk.length)
+            oob = file.read(oob_size)
+            oobs.append(oob)
+
+    return oobs
 
 
 if __name__ == '__main__':
