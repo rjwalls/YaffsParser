@@ -35,7 +35,7 @@ def main():
 
     image = args[0]
 
-    headers = Scanner.get_contacts_headers(image, options.chunk_size,
+    headers = Scanner.get_anchor_headers(image, options.chunk_size,
                                            options.oob_size)
 
     oobs = Scanner.get_oob_bytes(image, headers, options.oob_size)

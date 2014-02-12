@@ -8,16 +8,15 @@ Ideally, this functionality will be incorporated into a new version of the Yaffs
 
 import os
 
-from optparse import OptionParser
 from YaffsClasses.YaffsChunk import YaffsHeader
 from YaffsClasses.YaffsOobTag import YaffsOobTag
 
 import YaffsParser
 
 
-def scan_file(image):
-    chunk_sizes = [1024, 2048, 4096]
-    oob_sizes = [32, 64, 128]
+def scan_file(image, anchor):
+    chunk_sizes = [1024, 2048]
+    oob_sizes = [32, 64]
 
     max_count = 0
     best_csize = None
@@ -32,12 +31,12 @@ def scan_file(image):
             if size % (csize + osize) != 0:
                 continue
 
-            headers = get_contacts_headers(image, csize, osize)
-            print "Found %d contacts2.db headers" % (len(headers))
+            headers = get_anchor_headers(image, csize, osize, anchor)
+            print "Found %d %s headers" % (len(headers), anchor)
 
             constant_count = count_constant_oobs(image, headers, osize)
 
-            print "Found %d constant oobs for the contacts headers." \
+            print "Found %d constant oobs for the headers." \
                   % (constant_count)
 
             count = len(headers) - constant_count
@@ -48,12 +47,16 @@ def scan_file(image):
                 best_osize = osize
                 best_headers = headers
 
-    if best_csize is None:
+    if max_count == 0:
         print "Unable to determine sizes."
-    else:
-        print "Most likely chunk and oob sizes: %d, %d" % (best_csize, best_osize)
+        return None
+
+    print "Most likely chunk and oob sizes: %d, %d" % (best_csize, best_osize)
 
     guess_oob_offset(image, best_headers, best_osize)
+
+    return best_osize, best_csize
+
 
 def count_constant_oobs(image, chunks, oobsize):
     oobs = YaffsParser.get_oob_bytes(image, chunks, oobsize)
@@ -106,13 +109,13 @@ def get_headers(image, chunk_size, oob_size):
     return header_chunks
 
 
-def get_contacts_headers(image, chunk_size, oob_size):
+def get_anchor_headers(image, chunk_size, oob_size, anchor):
     header_chunks = get_headers(image, chunk_size, oob_size)
 
-    contacts_headers = [h for h in header_chunks
-                        if h.name == 'contacts2.db']
+    anchor_headers = [h for h in header_chunks
+                        if h.name == anchor]
 
-    return contacts_headers
+    return anchor_headers
 
 
 def main():
@@ -120,19 +123,16 @@ def main():
     Assume we pass this script the image file path as an argument on the
     command line.
     """
+    DEFAULT_ANCHOR = ['contacts2.db']
 
-    usage = 'usage: %prog [options] imagefile'
+    parser = YaffsParser.get_argparser()
+    parser.add_argument("--anchors",
+                        help="The filenames to use for anchoring the search. Default: %s" % DEFAULT_ANCHOR,
+                        nargs='*', default=DEFAULT_ANCHOR, dest="anchors")
+    args = parser.parse_args()
 
-    parser = OptionParser(usage=usage)
-    options, args = parser.parse_args()
-
-    if len(args) != 1:
-        print "Incorrect command line arguments. Missing (or too many) image files"
-        return 1
-
-    image = args[0]
-
-    scan_file(image)
+    for anchor in args.anchors:
+        scan_file(args.imagefile, anchor)
 
     pass
 
