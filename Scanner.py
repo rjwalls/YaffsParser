@@ -15,8 +15,8 @@ import YaffsParser
 
 
 def scan_file(image, anchor):
-    chunk_sizes = [1024, 2048]
-    oob_sizes = [32, 64]
+    chunk_sizes = [1024, 2048, 4096]
+    oob_sizes = [0, 32, 64, 128]
 
     max_count = 0
     best_csize = None
@@ -32,14 +32,18 @@ def scan_file(image, anchor):
                 continue
 
             headers = get_anchor_headers(image, csize, osize, anchor)
+
+            if len(headers) == 0:
+                continue
+
+            print ">", csize, osize
             print "Found %d %s headers" % (len(headers), anchor)
 
             constant_count = count_constant_oobs(image, headers, osize)
+            count = 2 * len(headers) - constant_count
 
-            print "Found %d constant oobs for the headers." \
-                  % (constant_count)
-
-            count = len(headers) - constant_count
+            print "Found %d potentially good oobs for the headers." \
+                  % (len(headers) - constant_count)
 
             if count >= max_count:
                 max_count = count
@@ -47,11 +51,18 @@ def scan_file(image, anchor):
                 best_osize = osize
                 best_headers = headers
 
-    if max_count == 0:
+    if best_headers is None or len(best_headers) == 0:
         print "Unable to determine sizes."
         return None
 
     print "Most likely chunk and oob sizes: %d, %d" % (best_csize, best_osize)
+
+    headers = get_anchor_headers(image, best_csize, best_osize, anchor)
+
+    unicode = '.'.join([h.name for h in headers])
+
+    if '\x00' in unicode > 0:
+        print "Filenames appear to be in unicode"
 
     guess_oob_offset(image, best_headers, best_osize)
 
@@ -113,7 +124,7 @@ def get_anchor_headers(image, chunk_size, oob_size, anchor):
     header_chunks = get_headers(image, chunk_size, oob_size)
 
     anchor_headers = [h for h in header_chunks
-                        if h.name == anchor]
+                      if h.name.replace('\x00', '') == anchor]
 
     return anchor_headers
 
@@ -123,17 +134,19 @@ def main():
     Assume we pass this script the image file path as an argument on the
     command line.
     """
-    DEFAULT_ANCHOR = ['contacts2.db']
+    DEFAULT_ANCHORS = ['contacts2.db']
 
     parser = YaffsParser.get_argparser()
     parser.add_argument("--anchors",
-                        help="The filenames to use for anchoring the search. Default: %s" % DEFAULT_ANCHOR,
-                        nargs='*', default=DEFAULT_ANCHOR, dest="anchors")
+                        help="The filenames to use for anchoring the search. Default: %s" % DEFAULT_ANCHORS,
+                        nargs='*', default=DEFAULT_ANCHORS, dest="anchors")
     args = parser.parse_args()
 
-    for anchor in args.anchors:
-        scan_file(args.imagefile, anchor)
+    print args.imagefile
 
+    for anchor in args.anchors:
+        print 'Scanning for %s' % anchor
+        scan_file(args.imagefile, anchor)
     pass
 
 
