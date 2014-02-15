@@ -14,10 +14,10 @@ import Scanner
 SCRIPT_NAME = "YaffsParser"
 VERSION = "0.0"
 
-DEFAULT_PAGESIZE = 2048
+DEFAULT_CHUNKSIZE = 2048
 DEFAULT_PAGES_PER_BLOCK = 64
 DEFAULT_OOB = 64
-DEFAULT_OOB_TAG_OFFSET = 29
+DEFAULT_OOB_TAG_OFFSET = 30
 
 
 def get_argparser():
@@ -29,8 +29,8 @@ def get_argparser():
 
     parser.add_argument("imagefile", help="The path to the YAFFS2 image.", type=str)
 
-    parser.add_argument("-p", help="The NAND page size (e.g. 2048 bytes). Default: %d" % DEFAULT_PAGESIZE,
-                        type=int, default=DEFAULT_PAGESIZE, dest="pagesize")
+    parser.add_argument("-p", help="The NAND chunk size (e.g. 2048 bytes). Default: %d" % DEFAULT_CHUNKSIZE,
+                        type=int, default=DEFAULT_CHUNKSIZE, dest="chunksize")
 
     parser.add_argument('-o', help="The NAND OOB (Out of Band) size. Default: %d" % DEFAULT_OOB,
                         type=int, default=DEFAULT_OOB, dest="oobsize")
@@ -63,7 +63,7 @@ def main():
 
     #read in and order all of the blocks, by reverse order of sequence number
     sorted_blocks = extract_ordered_blocks(args.imagefile,
-                                           args.pagesize,
+                                           args.chunksize,
                                            args.oobsize,
                                            args.blocksize,
                                            args.tag_offset)

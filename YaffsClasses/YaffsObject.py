@@ -144,7 +144,6 @@ class YaffsObject:
             name = hChunk.name
 
         with open(name, "wb") as f:
-                    
             for index in range(int(numChunks)):
                 cTag, cChunk = self.versions[versionNum][index+1]
                     

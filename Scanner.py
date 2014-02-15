@@ -14,10 +14,7 @@ from YaffsClasses.YaffsOobTag import YaffsOobTag
 import YaffsParser
 
 
-def scan_file(image, anchor):
-    chunk_sizes = [1024, 2048, 4096]
-    oob_sizes = [0, 32, 64, 128]
-
+def scan_file(image, anchor, chunk_sizes, oob_sizes):
     max_count = 0
     best_csize = None
     best_osize = None
@@ -83,23 +80,31 @@ def count_constant_oobs(image, chunks, oobsize):
 def guess_oob_offset(image, headers, oob_size):
     oobs_bytes = YaffsParser.get_oob_bytes(image, headers, oob_size)
 
-    for offset in xrange(1, oob_size-17):
+    best_parsed = []
+
+    # We use -16 because we are looking for 16 bytes in the tag
+    # for parsing
+    for offset in xrange(0, oob_size-16):
         parsed = []
 
         for bytes in oobs_bytes:
             parsed_oob = YaffsOobTag(bytes, offset)
             if not parsed_oob.isHeaderTag:
-                parsed = []
-                break
+                continue
             else:
                 parsed.append(parsed_oob)
 
-        object_ids = set([o.object_id for o in parsed])
+        if len(parsed) > len(best_parsed):
+            best_offset = offset
+            best_parsed = parsed
 
-        if len(object_ids) == 1:
-            print "OOB tag offset is %d" % offset
-            print "Object id: %s" % str(object_ids)
-            return
+    object_ids = set([o.object_id for o in best_parsed])
+
+    if len(object_ids) > 0:
+        print "OOB tag offset is %d" % best_offset
+        print "with %d valid header tags" % len(best_parsed)
+        print "Object id: %s" % str(object_ids)
+        return
 
     print "Unable to determine OOB tag offset."
     return
@@ -135,18 +140,26 @@ def main():
     command line.
     """
     DEFAULT_ANCHORS = ['contacts2.db']
+    DEFAULT_CHUNK_SIZES = [1024, 2048, 4096]
+    DEFAULT_OOB_SIZES = [0, 32, 64, 128]
 
     parser = YaffsParser.get_argparser()
     parser.add_argument("--anchors",
                         help="The filenames to use for anchoring the search. Default: %s" % DEFAULT_ANCHORS,
                         nargs='*', default=DEFAULT_ANCHORS, dest="anchors")
+    parser.add_argument("--chunksizes",
+                        help="The chunk sizes to test for. Default: %s" % DEFAULT_CHUNK_SIZES,
+                        nargs='*', default=DEFAULT_CHUNK_SIZES, dest="chunk_sizes", type=int)
+    parser.add_argument("--oobsizes",
+                        help="The oob sizes to test for. Default: %s" % DEFAULT_OOB_SIZES,
+                        nargs='*', default=DEFAULT_OOB_SIZES, dest="oob_sizes", type=int)
     args = parser.parse_args()
 
     print args.imagefile
 
     for anchor in args.anchors:
         print 'Scanning for %s' % anchor
-        scan_file(args.imagefile, anchor)
+        scan_file(args.imagefile, anchor, args.chunk_sizes, args.oob_sizes)
     pass
 
 

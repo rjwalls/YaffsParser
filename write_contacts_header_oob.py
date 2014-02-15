@@ -8,7 +8,7 @@ in the image file.
 import sys
 
 from optparse import OptionParser
-
+import YaffsParser
 import Scanner
 
 
@@ -36,9 +36,9 @@ def main():
     image = args[0]
 
     headers = Scanner.get_anchor_headers(image, options.chunk_size,
-                                           options.oob_size)
+                                         options.oob_size, 'contacts2.db')
 
-    oobs = Scanner.get_oob_bytes(image, headers, options.oob_size)
+    oobs = YaffsParser.get_oob_bytes(image, headers, options.oob_size)
 
     for oob in oobs:
         sys.stdout.write(oob)

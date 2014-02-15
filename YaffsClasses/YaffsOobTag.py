@@ -16,18 +16,16 @@ class YaffsOobTag:
         # The Layout of the oob is not controlled entirely by Yaffs so
         # the specific offsets for these fields may be different for different
         # phones.
-        (self.block_status,
-         self.block_seq,
+        (self.block_seq,
          self.object_id,
          self.chunk_id,
-         self.num_bytes) = struct.unpack("<%dxsIIII%dx"
-                                         % (tag_offset, len(oobBytes)-17-tag_offset),
-                                         oobBytes)
+         self.num_bytes) = struct.unpack("<IIII",
+                                         oobBytes[tag_offset:tag_offset+16])
         
         #check if the top byte is 0x80 or 0xC0 which denotes a header chunk
         topByte = self.chunk_id >> 24
         
-        self.isBadBlock = (self.block_status != '\xff')
+        #self.isBadBlock = (self.block_status != '\xff')
         
         self.isHeaderTag = (topByte == 0x80 or topByte == 0xC0)
         self.is_shrink_header = (topByte == 0xC0)
