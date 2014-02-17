@@ -62,7 +62,6 @@ class YaffsObject:
             for chunk_id in version:
                 if header_oob.block_seq < version[chunk_id][0].block_seq:
                     return False
-
         return True
         
     def splitByVersion(self):
@@ -70,13 +69,16 @@ class YaffsObject:
         #TODO: It wont handle shrink headers yet.
         #TODO: Doesn't handle issues that arise from missing chunks
 
+        #In the event of an unclean shutdown while the object was open,
+        # the first chunk pair (i.e. the last written),
+        #won't be a header chunk as expected. If this happens, the current logic
+        #will not assign the chunks to a version.
+
         self.versions = []
-        chunks = None
         
         for tag, chunk in self.chunk_pairs:
             if tag.isHeaderTag:
-                chunks = {}
-                chunks[0] = (tag, chunk)
+                chunks = {0: (tag, chunk)}
                 self.versions.append(chunks)
                 
             #if this is not a header, add it to every known version that doesn't have a chunk with this id
@@ -111,32 +113,29 @@ class YaffsObject:
 
         for tag, chunk in self.chunk_pairs:
             if tag.isHeaderTag:
+                if 0 not in self.chunkDict:
+                    self.chunkDict[0] = []
+
                 chunk = YaffsChunk.YaffsHeader(chunk)
-            
-                if not(0 in self.chunkDict):
-                    self.chunkDict[0] = [(tag, chunk)]
-                else:
-                    self.chunkDict[0].append((tag, chunk))
-                
-            if not tag.isHeaderTag:
-                if not(tag.chunk_id in self.chunkDict):
-                    self.chunkDict[tag.chunk_id] = [(tag, chunk)]
-                else:
-                    self.chunkDict[tag.chunk_id].append((tag, chunk))
+                self.chunkDict[0].append((tag, chunk))
+            else:
+                if tag.chunk_id not in self.chunkDict:
+                    self.chunkDict[tag.chunk_id] = []
+
+                self.chunkDict[tag.chunk_id].append((tag, chunk))
         
-        if not 0 in self.chunkDict:
+        if 0 not in self.chunkDict:
             #print 'Object has no header tag!'
             self.hasNoHeader = True
         else:
             tag, chunk = self.chunkDict[0][0]
             self.is_deleted = tag.isDeleted
 
-
     def writeVersion(self, versionNum=0, name=None):
         header, hChunk = self.versions[versionNum][0]
         hChunk = YaffsChunk.YaffsHeader(hChunk)
         
-        numChunks = math.ceil( float(hChunk.fsize) / hChunk.length)
+        numChunks = math.ceil(float(hChunk.fsize) / hChunk.length)
         
         remaining = hChunk.fsize
 
@@ -145,14 +144,28 @@ class YaffsObject:
 
         with open(name, "wb") as f:
             for index in range(int(numChunks)):
-                cTag, cChunk = self.versions[versionNum][index+1]
+                chunk_id = index + 1
+                #Versions may be missing certain chunks. This
+                #happens due to block erasure.
+                if chunk_id not in self.versions[versionNum]:
+                    #Make a best effort and grab the most recent
+                    #version of that chunk
+                    if chunk_id in self.chunkDict:
+                        cTag, cChunk = self.chunkDict[chunk_id][0]
+                        bytes = cChunk.get_bytes()
+                    #otherwise, just write zeroes
+                    else:
+                        bytes = 0x00 * hChunk.length
+
+                else:
+                    cTag, cChunk = self.versions[versionNum][chunk_id]
                     
-                bytes = cChunk.get_bytes()
+                    bytes = cChunk.get_bytes()
                     
                 if remaining >= len(bytes):
                     f.write(bytes)
                     remaining -= len(bytes)
-                else :
+                else:
                     f.write(bytes[0:remaining])
                     remaining = 0
     
