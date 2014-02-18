@@ -299,6 +299,15 @@ def extract_objects(blocks):
         obj.reconstruct()
         obj.splitByVersion()
 
+    for obj in split_objects:
+        if len(obj.versions) == 0:
+            continue
+
+        oob, chunk = obj.versions[0][0]
+
+        if oob.num_bytes == 0 and chunk.name == 'deleted':
+            obj.is_deleted = True
+
     return split_objects
 
 

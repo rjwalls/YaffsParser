@@ -61,7 +61,10 @@ def scan_file(image, anchor, chunk_sizes, oob_sizes):
     if '\x00' in unicode > 0:
         print "Filenames appear to be in unicode"
 
-    guess_oob_offset(image, best_headers, best_osize)
+    best_oob = guess_oob_offset(image, best_headers, best_osize)
+
+    if best_oob:
+        guess_block_size(image, best_csize, best_osize, best_oob)
 
     return best_osize, best_csize
 
@@ -104,10 +107,47 @@ def guess_oob_offset(image, headers, oob_size):
         print "OOB tag offset is %d" % best_offset
         print "with %d valid header tags" % len(best_parsed)
         print "Object id: %s" % str(object_ids)
-        return
+        return best_offset
 
     print "Unable to determine OOB tag offset."
-    return
+    return None
+
+
+def guess_block_size(image, chunk_size, oob_size, oob_offset):
+    chunk_pairs = YaffsParser.extract_chunks(image, chunk_size, oob_size)
+    chunks = [c for c, o in chunk_pairs[:1024]]
+
+    oobs_bytes = YaffsParser.get_oob_bytes(image, chunks, oob_size)
+
+    oobs = [YaffsOobTag(b, oob_offset) for b in oobs_bytes]
+
+    prev = -1
+    counts = []
+    count = 0
+
+    for oob in oobs:
+        if oob.block_seq != prev:
+            if count > 0:
+                counts.append(count)
+            count = 1
+            prev = oob.block_seq
+        else:
+            count += 1
+
+    import collections
+    size, freq = collections.Counter(counts).most_common(1)[0]
+
+    if freq == 1:
+        print "Unable to determine block size."
+        return None
+
+    print "Most likely block size: %d" % size
+    return size
+
+
+
+
+
 
 
 def get_headers(image, chunk_size, oob_size):

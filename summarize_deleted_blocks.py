@@ -43,7 +43,10 @@ def get_missing_block_numbers(sorted_blocks):
 
     #Let's check to make sure that no two blocks have the same sequence number.
     if len(seq_set) < len(blocks):
-        print "At least one sequence number must have been repeated."
+        print "Warning: Repeated sequence numbers.",
+        import collections
+        counter = collections.Counter([b.sequence_num for b in blocks])
+        print [(element, count) for element, count in counter.most_common() if count > 1]
 
     #The blocks are sorted in reverse
     last = blocks[0].sequence_num
