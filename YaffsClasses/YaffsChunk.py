@@ -44,6 +44,11 @@ class YaffsHeader(YaffsChunk):
          self.fsize,
          padding) = struct.unpack("<IIH255s3xIIIIIII216x%ds" % (len(chunk_bytes)-0x200), chunk_bytes)
 
+        #atime is the object's creation time
+        #mtime is the object's modification time
+        #ctime is the last time its inode has been modified. This includes
+        #when the object, or its metadata was changed
+
 
         #let's remove those extra null bytes that we read in.
         self.name = self.name.strip('\x00')
